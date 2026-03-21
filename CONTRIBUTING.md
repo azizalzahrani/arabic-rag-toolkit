@@ -30,3 +30,7 @@ pytest -v
 - Describe the problem and the chosen fix.
 - Include sample input/output when the change affects retrieval or generation behavior.
 - Call out any dependency or packaging changes explicitly.
+
+## Maintainer Notes
+
+Release instructions live in `RELEASING.md`.

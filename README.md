@@ -1,5 +1,9 @@
 # أدوات RAG العربية
 
+[![Tests](https://github.com/azizalzahrani/arabic-rag-toolkit/actions/workflows/tests.yml/badge.svg)](https://github.com/azizalzahrani/arabic-rag-toolkit/actions/workflows/tests.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+
 ## نظرة عامة
 مجموعة أدوات شاملة لبناء أنظمة Retrieval-Augmented Generation (RAG) متخصصة في معالجة النصوص العربية بشكل احترافي. تحل هذه الأداة المشاكل الرئيسية التي تواجه أنظمة RAG التقليدية عند التعامل مع اللغة العربية مثل التقطيع الذكي للنصوص، والبحث في الكلمات ذات التشكيل، ومعالجة الأحرف من اليمين لليسار (RTL).
 
@@ -17,6 +21,8 @@
 
 # Arabic RAG Toolkit
 
+Arabic-first building blocks for retrieval, chunking, normalization, and answer generation with a local-first default path that works before you wire in hosted AI services.
+
 ## Overview
 A comprehensive suite of tools for building Retrieval-Augmented Generation (RAG) systems specifically optimized for Arabic text processing. This toolkit solves critical challenges faced by traditional RAG systems when handling Arabic: intelligent text chunking, diacritic-aware search, and proper right-to-left (RTL) text handling.
 
@@ -29,6 +35,12 @@ A comprehensive suite of tools for building Retrieval-Augmented Generation (RAG)
 - **Local-First Defaults**: Works without API keys on day one using local fallbacks
 - **Multiple Vector Stores**: In-memory, FAISS, and ChromaDB support
 - **Practical Examples**: Real-world examples with Saudi regulatory documents
+
+## Why This Repo Exists
+
+- Most general-purpose RAG demos ignore Arabic normalization and chunking details.
+- New users should be able to run the project locally before configuring external APIs.
+- Hosted providers and external vector stores should be optional upgrades, not installation blockers.
 
 ---
 
@@ -44,6 +56,14 @@ A comprehensive suite of tools for building Retrieval-Augmented Generation (RAG)
 git clone https://github.com/azizalzahrani/arabic-rag-toolkit.git
 cd arabic-rag-toolkit
 pip install .
+```
+
+### النشر من PyPI | PyPI Install
+
+After the first PyPI release:
+
+```bash
+pip install arabic-rag-toolkit
 ```
 
 ### إعداد البيئة | Environment Setup
@@ -304,6 +324,10 @@ pip install -r requirements.txt
 # Run tests
 pytest -v
 ```
+
+### Releases
+
+Maintainer release steps are documented in [RELEASING.md](RELEASING.md).
 
 ---
 

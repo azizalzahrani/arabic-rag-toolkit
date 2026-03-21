@@ -8,8 +8,12 @@ English:
     Tests covering documented APIs and the local offline-compatible execution path.
 """
 
+import re
+from pathlib import Path
+
 from arabic_rag.generator import ArabicResponseGenerator
 from arabic_rag.pipeline import ArabicRAGPipeline
+from arabic_rag import __version__
 
 
 def test_pipeline_supports_documented_shortcuts():
@@ -61,3 +65,13 @@ def test_generator_defaults_to_local_provider_without_api_keys():
     """يستخدم المولد المزود المحلي عند غياب مفاتيح المزودات الخارجية."""
     generator = ArabicResponseGenerator()
     assert generator.provider_name == "local"
+
+
+def test_package_version_matches_pyproject():
+    """يبقى رقم الإصدار متسقاً بين الحزمة وبيانات النشر."""
+    root = Path(__file__).resolve().parents[1]
+    pyproject_text = (root / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"$', pyproject_text, re.MULTILINE)
+
+    assert match is not None
+    assert match.group(1) == __version__
