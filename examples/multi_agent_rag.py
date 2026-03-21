@@ -25,7 +25,7 @@ def main():
 
     # تهيئة خط الأنابيب
     print("تهيئة نظام RAG متعدد الوكلاء...")
-    pipeline = ArabicRAGPipeline(verbose=True)
+    pipeline = ArabicRAGPipeline(vector_store="memory", llm_provider="local", verbose=True)
 
     # إضافة المستندات
     documents = [

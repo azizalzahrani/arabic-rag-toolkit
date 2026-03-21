@@ -27,7 +27,7 @@ class RetrievalConfig:
     English:
         Configuration for retrieval and search parameters.
     """
-    vector_store_type: str = "chroma"  # chroma or faiss
+    vector_store_type: str = "memory"  # memory, chroma or faiss
     top_k: int = 5
     similarity_threshold: float = 0.0
     vector_store_path: str = "./data/vector_store"
@@ -63,6 +63,67 @@ class VectorStore(ABC):
     def load(self, path: str) -> None:
         """تحميل قاعدة البيانات"""
         pass
+
+
+class MemoryVectorStore(VectorStore):
+    """
+    متجر ذاكرة محلي - In-memory vector store
+
+    العربية:
+        تخزين بسيط داخل الذاكرة لا يحتاج إلى تبعيات خارجية.
+
+    English:
+        Lightweight in-memory store that does not require external dependencies.
+    """
+
+    def __init__(self):
+        self.documents = []
+        self.embeddings = []
+
+    def add_documents(self, documents: List[str], embeddings: List) -> None:
+        self.documents.extend(documents)
+        self.embeddings.extend(list(embeddings))
+
+    def search(self, query_embedding: List[float], top_k: int) -> List[Tuple[str, float]]:
+        import numpy as np
+
+        if not self.documents:
+            return []
+
+        query = np.array(query_embedding, dtype="float32")
+        query_norm = np.linalg.norm(query)
+
+        scores = []
+        for document, embedding in zip(self.documents, self.embeddings):
+            vector = np.array(embedding, dtype="float32")
+            denominator = query_norm * np.linalg.norm(vector)
+            similarity = float(np.dot(query, vector) / denominator) if denominator else 0.0
+            scores.append((document, similarity))
+
+        scores.sort(key=lambda item: item[1], reverse=True)
+        return scores[:top_k]
+
+    def save(self, path: str) -> None:
+        import pickle
+
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "memory_store.pkl"), "wb") as file:
+            pickle.dump(
+                {
+                    "documents": self.documents,
+                    "embeddings": self.embeddings,
+                },
+                file,
+            )
+
+    def load(self, path: str) -> None:
+        import pickle
+
+        with open(os.path.join(path, "memory_store.pkl"), "rb") as file:
+            payload = pickle.load(file)
+
+        self.documents = payload.get("documents", [])
+        self.embeddings = payload.get("embeddings", [])
 
 
 class ChromaVectorStore(VectorStore):
@@ -125,7 +186,8 @@ class ChromaVectorStore(VectorStore):
         if not self.collection:
             self.create_collection()
 
-        for i, (doc, embedding) in enumerate(zip(documents, embeddings)):
+        start_index = len(self.documents)
+        for i, (doc, embedding) in enumerate(zip(documents, embeddings), start=start_index):
             self.collection.add(
                 documents=[doc],
                 embeddings=[embedding.tolist()],
@@ -249,7 +311,7 @@ class FAISSVectorStore(VectorStore):
 
         output = []
         for idx, distance in zip(indices[0], distances[0]):
-            if idx < len(self.documents):
+            if 0 <= idx < len(self.documents):
                 # تحويل المسافة إلى درجة تشابه (1 / (1 + distance))
                 similarity = 1 / (1 + distance)
                 output.append((self.documents[idx], float(similarity)))
@@ -333,13 +395,28 @@ class ArabicRetriever:
         English:
             Initialize the required vector store.
         """
-        if self.config.vector_store_type.lower() == "chroma":
-            self.vector_store = ChromaVectorStore(self.config.vector_store_path)
-        elif self.config.vector_store_type.lower() == "faiss":
+        requested_store = self.config.vector_store_type.lower()
+
+        if requested_store == "memory":
+            self.vector_store = MemoryVectorStore()
+            self.vector_store_type = "memory"
+        elif requested_store == "chroma":
+            try:
+                self.vector_store = ChromaVectorStore(self.config.vector_store_path)
+                self.vector_store_type = "chroma"
+            except ImportError:
+                self.vector_store = MemoryVectorStore()
+                self.vector_store_type = "memory"
+        elif requested_store == "faiss":
             dimension = 384  # الحجم الافتراضي
             if self.embeddings:
                 dimension = self.embeddings.get_embedding_dimension()
-            self.vector_store = FAISSVectorStore(dimension=dimension)
+            try:
+                self.vector_store = FAISSVectorStore(dimension=dimension)
+                self.vector_store_type = "faiss"
+            except ImportError:
+                self.vector_store = MemoryVectorStore()
+                self.vector_store_type = "memory"
         else:
             raise ValueError(f"Unknown vector store type: {self.config.vector_store_type}")
 

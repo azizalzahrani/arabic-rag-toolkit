@@ -13,6 +13,8 @@ English:
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+import os
+import re
 
 
 @dataclass
@@ -26,7 +28,7 @@ class GenerationConfig:
     English:
         Configuration for response generation parameters.
     """
-    llm_provider: str = "openai"  # openai, anthropic, local
+    llm_provider: str = "local"  # openai, anthropic, local
     model_name: str = "gpt-4"
     temperature: float = 0.3
     max_tokens: int = 2000
@@ -151,6 +153,97 @@ class AnthropicProvider(LLMProvider):
             raise RuntimeError(f"Anthropic API error: {str(e)}")
 
 
+class LocalExtractiveProvider(LLMProvider):
+    """
+    مزود محلي - Local fallback provider
+
+    العربية:
+        مزود خفيف يعتمد على استخراج أفضل المقاطع من السياق عند غياب مزودي LLM.
+
+    English:
+        Lightweight fallback provider that extracts the best context snippets when
+        external LLM providers are unavailable.
+    """
+
+    def generate(self, prompt: str, config: GenerationConfig) -> str:
+        if "التعليقات والتحسينات المطلوبة:" in prompt:
+            return self._extract_section(prompt, "الإجابة الحالية:", "التعليقات والتحسينات المطلوبة:").strip()
+
+        if "سؤال المتابعة:" in prompt:
+            follow_up = self._extract_section(prompt, "سؤال المتابعة:", "الرجاء").strip()
+            original_answer = self._extract_section(prompt, "الإجابة على السؤال الأول:", "سؤال المتابعة:").strip()
+            if original_answer:
+                return f"{original_answer}\n\nإضافةً إلى ذلك، بخصوص سؤال المتابعة: {follow_up}"
+            return f"لا تتوفر معلومات كافية للإجابة عن سؤال المتابعة: {follow_up}"
+
+        if "النص:" in prompt and "ملخص" in prompt:
+            text = self._extract_section(prompt, "النص:", "")
+            return self._summarize_text(text)
+
+        question = self._extract_section(prompt, "السؤال:", "الرجاء").strip()
+        context = self._extract_section(prompt, "السياق والمعلومات ذات الصلة:", "السؤال:").strip()
+
+        if context:
+            return self._answer_from_context(question, context)
+
+        if question:
+            return f"لا يتوفر سياق كافٍ للإجابة بشكل موثوق عن السؤال: {question}"
+
+        return self._summarize_text(prompt)
+
+    def _answer_from_context(self, question: str, context: str) -> str:
+        sentences = self._split_sentences(context)
+        if not sentences:
+            return "لا توجد معلومات كافية في السياق المتاح."
+
+        query_terms = self._tokenize(question)
+        ranked_sentences = sorted(
+            sentences,
+            key=lambda sentence: (self._score_sentence(sentence, query_terms), len(sentence)),
+            reverse=True,
+        )
+
+        top_sentences = []
+        for sentence in ranked_sentences:
+            if sentence not in top_sentences:
+                top_sentences.append(sentence)
+            if len(top_sentences) == 2:
+                break
+
+        body = " ".join(top_sentences).strip()
+        if not body:
+            body = sentences[0]
+
+        return f"استناداً إلى المستندات المتاحة: {body}"
+
+    def _summarize_text(self, text: str, max_sentences: int = 2) -> str:
+        sentences = self._split_sentences(text)
+        if not sentences:
+            return text.strip()
+        return " ".join(sentences[:max_sentences]).strip()
+
+    def _split_sentences(self, text: str) -> List[str]:
+        candidates = re.split(r'(?<=[\.\!\؟\n])\s+', text.strip())
+        return [candidate.strip() for candidate in candidates if candidate.strip()]
+
+    def _tokenize(self, text: str) -> List[str]:
+        return re.findall(r'[\w\u0600-\u06FF]+', text.lower())
+
+    def _score_sentence(self, sentence: str, query_terms: List[str]) -> int:
+        sentence_terms = set(self._tokenize(sentence))
+        return sum(1 for term in query_terms if term in sentence_terms)
+
+    def _extract_section(self, text: str, start_marker: str, end_marker: str) -> str:
+        if start_marker not in text:
+            return ""
+
+        section = text.split(start_marker, 1)[1]
+        if end_marker and end_marker in section:
+            section = section.split(end_marker, 1)[0]
+
+        return section.strip()
+
+
 class ArabicResponseGenerator:
     """
     منشئ الإجابات العربي - Arabic Response Generator
@@ -200,9 +293,32 @@ class ArabicResponseGenerator:
         provider_type = self.config.llm_provider.lower()
 
         if provider_type == "openai":
-            self.provider = OpenAIProvider()
+            if not os.getenv("OPENAI_API_KEY"):
+                self.provider = LocalExtractiveProvider()
+                self.provider_name = "local"
+                return
+
+            try:
+                self.provider = OpenAIProvider()
+                self.provider_name = "openai"
+            except ImportError:
+                self.provider = LocalExtractiveProvider()
+                self.provider_name = "local"
         elif provider_type == "anthropic":
-            self.provider = AnthropicProvider()
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                self.provider = LocalExtractiveProvider()
+                self.provider_name = "local"
+                return
+
+            try:
+                self.provider = AnthropicProvider()
+                self.provider_name = "anthropic"
+            except ImportError:
+                self.provider = LocalExtractiveProvider()
+                self.provider_name = "local"
+        elif provider_type == "local":
+            self.provider = LocalExtractiveProvider()
+            self.provider_name = "local"
         else:
             raise ValueError(f"Unknown LLM provider: {self.config.llm_provider}")
 

@@ -1,5 +1,5 @@
 """
-فريق الوكلاء متعددي الأدوار - Multi-Agent CrewAI Setup
+فريق الوكلاء متعددي الأدوار - Multi-Agent Team Setup
 
 العربية:
     إعداد فريق من الوكلاء المتخصصة يعملون معاً لحل المهام المعقدة
@@ -12,6 +12,17 @@ from typing import Optional, Dict, Any
 from arabic_rag.agents.research_agent import ResearchAgent
 from arabic_rag.agents.validator_agent import ValidatorAgent
 from arabic_rag.agents.writer_agent import WriterAgent
+
+
+def _resolve_retriever(retriever_or_pipeline):
+    """استخراج محرك البحث من كائن مباشر أو من خط الأنابيب."""
+    if retriever_or_pipeline is None:
+        return None
+
+    if hasattr(retriever_or_pipeline, "retrieve"):
+        return retriever_or_pipeline
+
+    return getattr(retriever_or_pipeline, "retriever", None)
 
 
 class ArabicRAGCrew:
@@ -46,7 +57,8 @@ class ArabicRAGCrew:
             verbose: bool - إظهار التفاصيل
         """
         self.verbose = verbose
-        self.research_agent = ResearchAgent(retriever)
+        resolved_retriever = _resolve_retriever(retriever)
+        self.research_agent = ResearchAgent(resolved_retriever)
         self.validator_agent = ValidatorAgent()
         self.writer_agent = WriterAgent(style="formal")
 
@@ -254,4 +266,4 @@ def setup_crew(retriever=None, verbose: bool = False) -> ArabicRAGCrew:
         result = crew.execute_task("سؤالي")
         ```
     """
-    return ArabicRAGCrew(retriever=retriever, verbose=verbose)
+    return ArabicRAGCrew(retriever=_resolve_retriever(retriever), verbose=verbose)

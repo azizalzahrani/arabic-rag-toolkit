@@ -7,9 +7,10 @@
 - **تقطيع ذكي للنصوص العربية**: معالجة التصريفات والبادئات واللواحق العربية بكفاءة
 - **تطبيع النصوص العربية**: إزالة التشكيل، توحيد أشكال الألف، ومعالجة التطويل
 - **نماذج تضمين عربية**: دعم نماذج متخصصة مثل CAMeL وAraBART والنماذج متعددة اللغات
-- **أنظمة متعددة الوكلاء**: استخدام CrewAI لإنشاء فريق من الوكلاء الذكيين (محلل، مدقق، كاتب)
+- **أنظمة متعددة الوكلاء**: أدوات مدمجة لتنسيق أدوار البحث والتحقق والكتابة
 - **مرونة في اختيار النماذج**: دعم OpenAI و Anthropic والنماذج المحلية
-- **قواعد بيانات متعددة**: دعم FAISS و ChromaDB
+- **تشغيل محلي افتراضي**: استرجاع وإجابة محليان بدون الحاجة إلى مفاتيح API عند البداية
+- **قواعد بيانات متعددة**: دعم الذاكرة المحلية و FAISS و ChromaDB
 - **أمثلة عملية**: أمثلة حقيقية تطبق على وثائق سعودية ونظام معالجة متكامل
 
 ---
@@ -23,10 +24,11 @@ A comprehensive suite of tools for building Retrieval-Augmented Generation (RAG)
 - **Arabic-Aware Text Chunking**: Intelligently handles Arabic morphology, prefixes, and suffixes
 - **Arabic Text Normalization**: Removes diacritics, normalizes alef variants, and handles tatweel
 - **Arabic Embedding Models**: Supports CAMeL, AraBART, and multilingual embedding models
-- **Multi-Agent System**: Leverages CrewAI for orchestrating research, validation, and writing agents
+- **Multi-Agent Utilities**: Built-in research, validation, and writing agents
 - **Model Flexibility**: Support for OpenAI, Anthropic, and local LLMs
-- **Multiple Vector Stores**: FAISS and ChromaDB support
-- **Production-Ready Examples**: Real-world examples with Saudi regulatory documents
+- **Local-First Defaults**: Works without API keys on day one using local fallbacks
+- **Multiple Vector Stores**: In-memory, FAISS, and ChromaDB support
+- **Practical Examples**: Real-world examples with Saudi regulatory documents
 
 ---
 
@@ -41,14 +43,27 @@ A comprehensive suite of tools for building Retrieval-Augmented Generation (RAG)
 ```bash
 git clone https://github.com/azizalzahrani/arabic-rag-toolkit.git
 cd arabic-rag-toolkit
-pip install -e .
+pip install .
 ```
 
 ### إعداد البيئة | Environment Setup
 
 ```bash
 cp .env.example .env
-# Edit .env with your API keys and preferences
+# Optional: edit .env if you want to use OpenAI / Anthropic / Chroma / FAISS
+```
+
+### التثبيت مع الإضافات | Optional Extras
+
+```bash
+# Development tools
+pip install -e ".[dev]"
+
+# Sentence-transformers embeddings
+pip install ".[embeddings]"
+
+# OpenAI + Chroma example stack
+pip install ".[openai,chroma,embeddings]"
 ```
 
 ---
@@ -60,11 +75,10 @@ cp .env.example .env
 ```python
 from arabic_rag.pipeline import ArabicRAGPipeline
 
-# إعداد خط أنابيب RAG
+# إعداد خط أنابيب RAG يعمل محلياً بدون مفاتيح API
 pipeline = ArabicRAGPipeline(
-    embedding_model="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    vector_store="chroma",
-    llm_provider="openai"
+    vector_store="memory",
+    llm_provider="local"
 )
 
 # إضافة وثائق
@@ -89,9 +103,9 @@ from arabic_rag.pipeline import ArabicRAGPipeline
 
 # إعداد خط الأنابيب الأساسي
 pipeline = ArabicRAGPipeline(
-    embedding_model="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    vector_store="faiss",
-    llm_provider="openai"
+    vector_store="memory",
+    llm_provider="local",
+    verbose=True,
 )
 
 # إعداد فريق الوكلاء
@@ -99,8 +113,8 @@ crew = setup_crew(pipeline)
 
 # تنفيذ مهمة البحث
 task = "ابحث عن المتطلبات القانونية لتسجيل شركة جديدة في السعودية وقدم ملخصاً شاملاً"
-result = crew.kickoff(inputs={"task": task})
-print(result)
+result = crew.execute_task(task, top_k=3)
+print(result["final_answer"])
 ```
 
 ### مثال 3: معالجة النصوص العربية | Arabic Text Processing
@@ -116,7 +130,7 @@ normalized = preprocessor.normalize(text)
 print(f"النص المطبّع: {normalized}")  # السلام عليكم ورحمة الله وبركاته
 
 # تقطيع ذكي
-chunker = ArabicTextChunker(chunk_size=300, overlap=50)
+chunker = ArabicTextChunker()
 document = "القانون التجاري السعودي يحدد الأطر القانونية لجميع العمليات التجارية. المادة الأولى تنص على حقوق التجار..."
 chunks = chunker.chunk(document)
 for i, chunk in enumerate(chunks):
@@ -129,8 +143,13 @@ for i, chunk in enumerate(chunks):
 
 ```
 arabic-rag-toolkit/
+├── .github/
+│   └── workflows/
+│       └── tests.yml         # GitHub Actions CI
 ├── README.md
+├── CONTRIBUTING.md
 ├── LICENSE
+├── pyproject.toml
 ├── setup.py
 ├── requirements.txt
 ├── .gitignore
@@ -148,7 +167,7 @@ arabic-rag-toolkit/
 │   │   ├── research_agent.py   # وكيل البحث
 │   │   ├── validator_agent.py  # وكيل التحقق
 │   │   ├── writer_agent.py     # وكيل الكتابة
-│   │   └── multi_agent_crew.py # إعداد فريق CrewAI
+│   │   └── multi_agent_crew.py # تنسيق فريق الوكلاء
 │   └── utils/
 │       ├── __init__.py
 │       └── arabic_utils.py     # أدوات عربية مساعدة
@@ -225,7 +244,7 @@ arabic-rag-toolkit/
 ## البيئة والإعدادات | Configuration
 
 ### `.env.example`
-```
+```bash
 # LLM APIs
 OPENAI_API_KEY=your-openai-key-here
 ANTHROPIC_API_KEY=your-anthropic-key-here
@@ -234,14 +253,14 @@ ANTHROPIC_API_KEY=your-anthropic-key-here
 EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 
 # Vector Store Choice
-VECTOR_STORE=chroma  # Options: chroma, faiss
+VECTOR_STORE=memory  # Options: memory, chroma, faiss
 
 # LLM Provider
-LLM_PROVIDER=openai  # Options: openai, anthropic
+LLM_PROVIDER=local  # Options: local, openai, anthropic
 
 # Model Names
-OPENAI_MODEL=gpt-4
-ANTHROPIC_MODEL=claude-3-opus-20240229
+OPENAI_MODEL=your-openai-model-name
+ANTHROPIC_MODEL=your-anthropic-model-name
 
 # Vector Store Path
 VECTOR_STORE_PATH=./data/vector_store
@@ -256,13 +275,12 @@ CHUNK_OVERLAP=50
 ## المتطلبات | Requirements
 
 - Python 3.9+
-- LangChain 0.1+
-- CrewAI 0.1+
-- Sentence-Transformers
-- FAISS-CPU or ChromaDB
-- OpenAI or Anthropic API keys (optional for local models)
+- `numpy` for the core local/offline path
+- `sentence-transformers` for real embedding models
+- `chromadb` or `faiss-cpu` for external vector stores
+- `openai` or `anthropic` only if you want hosted LLM generation
 
-See `requirements.txt` for complete list.
+Package metadata and optional extras are defined in `pyproject.toml`.
 
 ---
 
@@ -277,14 +295,14 @@ git clone https://github.com/azizalzahrani/arabic-rag-toolkit.git
 cd arabic-rag-toolkit
 
 # Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install in development mode
-pip install -e ".[dev]"
+pip install -r requirements.txt
 
 # Run tests
-pytest tests/ -v
+pytest -v
 ```
 
 ---
@@ -299,7 +317,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/azizalzahrani/arabic-rag-toolkit/issues)
 - **Author**: [@azizalzahrani](https://github.com/azizalzahrani)
-- **Email**: support@example.com
+- **Questions**: Open a GitHub issue with a minimal reproduction and expected behavior
 
 ---
 
@@ -307,7 +325,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - CAMeL Lab for Arabic NLP research
 - Hugging Face for transformer models
-- LangChain and CrewAI communities
 - All contributors and users
 
 ---
@@ -324,5 +341,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Version**: 0.1.0
-**Last Updated**: 2026-03-21
+**Last Updated**: 2026-03-22
 **Status**: Active Development

@@ -1,11 +1,11 @@
 """
-وكلاء CrewAI - CrewAI Agents
+وكلاء RAG - RAG Agents
 
 العربية:
-    مجموعة من وكلاء CrewAI المتخصصة في البحث والتحقق والكتابة
+    مجموعة من الوكلاء المتخصصة في البحث والتحقق والكتابة
 
 English:
-    Collection of specialized CrewAI agents for research, validation, and writing
+    Collection of specialized agents for research, validation, and writing
 """
 
 from .research_agent import ResearchAgent

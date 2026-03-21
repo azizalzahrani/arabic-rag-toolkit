@@ -30,7 +30,7 @@ class NormalizationConfig:
     remove_diacritics: bool = True
     normalize_alef: bool = True
     normalize_yaa: bool = True
-    normalize_ha: bool = True
+    normalize_ha: bool = False
     remove_tatweel: bool = True
     remove_extra_spaces: bool = True
     remove_punctuation: bool = False
@@ -91,6 +91,15 @@ class ArabicTextPreprocessor:
     HA_VARIANTS = {
         'ة': 'ه',   # Taa Marbuta
     }
+
+    COMMON_PREFIXES = (
+        "وال", "بال", "كال", "فال", "لل", "ال", "و", "ف", "ب", "ك", "ل"
+    )
+
+    COMMON_SUFFIXES = (
+        "يات", "ات", "ان", "ين", "ون", "ها", "هم", "هن", "كما", "كم", "كن",
+        "نا", "ني", "ية", "ه", "ة", "ي", "ك", "ت", "ا"
+    )
 
     def __init__(self, config: Optional[NormalizationConfig] = None):
         """
@@ -160,6 +169,45 @@ class ArabicTextPreprocessor:
             text = text.lower()
 
         return text
+
+    def normalize_query(self, query: str) -> str:
+        """
+        تطبيع الاستعلام - Normalize a query string
+
+        العربية:
+            تطبيع الاستعلام مع الحفاظ على بنيته العامة للبحث.
+
+        English:
+            Normalize a search query while preserving its general structure.
+        """
+        return self.normalize(query)
+
+    def extract_stem(self, word: str) -> str:
+        """
+        استخراج جذر تقريبي - Extract a lightweight stem
+
+        العربية:
+            استخراج جذر تقريبي عبر إزالة أشهر البادئات واللواحق العربية.
+
+        English:
+            Extract a lightweight stem by removing common Arabic prefixes and suffixes.
+        """
+        if not word or not word.strip():
+            raise ValueError("Word cannot be empty")
+
+        stem = self.normalize(word.strip())
+
+        for prefix in self.COMMON_PREFIXES:
+            if stem.startswith(prefix) and len(stem) - len(prefix) >= 3:
+                stem = stem[len(prefix):]
+                break
+
+        for suffix in self.COMMON_SUFFIXES:
+            if stem.endswith(suffix) and len(stem) - len(suffix) >= 3:
+                stem = stem[:-len(suffix)]
+                break
+
+        return stem or word.strip()
 
     def _remove_diacritics(self, text: str) -> str:
         """
@@ -255,67 +303,7 @@ class ArabicTextPreprocessor:
             Remove special characters and punctuation marks.
         """
         # الاحتفاظ بالأحرف العربية والأرقام والمسافات فقط
-        arabic_chars = r'[\u0600-\u06FF\u0750-\u077F\s\d\-]'
-        return re.sub(f'[^{arabic_chars}]', '', text)
-
-    def normalize_query(self, query: str) -> str:
-        """
-        تطبيع الاستعلام - Normalize search query
-
-        العربية:
-            تطبيع استعلام البحث بنفس طريقة تطبيع المستندات
-            لضمان تطابق أفضل في البحث
-
-        English:
-            Normalize search query the same way as documents for better matching.
-
-        Args:
-            query: str - الاستعلام
-
-        Returns:
-            str - الاستعلام المطبّع
-        """
-        return self.normalize(query)
-
-    def extract_stem(self, word: str) -> str:
-        """
-        استخراج جذر الكلمة - Extract word stem (basic stemming)
-
-        العربية:
-            محاولة استخراج جذر الكلمة بإزالة البادئات واللواحق الشائعة
-
-        English:
-            Extract basic word stem by removing common prefixes and suffixes.
-
-        Args:
-            word: str - الكلمة
-
-        Returns:
-            str - جذر الكلمة المتوقع
-
-        Example:
-            ```python
-            stem = processor.extract_stem("والمدرسة")
-            # Potential output: "درس" or similar
-            ```
-        """
-        word = self.normalize(word)
-
-        # إزالة البادئات الشائعة
-        prefixes = ['ال', 'و', 'ف', 'ب', 'ك', 'ل']
-        for prefix in prefixes:
-            if word.startswith(prefix) and len(word) > len(prefix) + 2:
-                word = word[len(prefix):]
-
-        # إزالة اللواحق الشائعة
-        suffixes = ['ها', 'ان', 'ات', 'ون', 'ين', 'ة', 'ه']
-        for suffix in suffixes:
-            if word.endswith(suffix) and len(word) > len(suffix) + 2:
-                word = word[:-len(suffix)]
-                break
-
-        return word
-
+        return re.sub(r'[^\u0600-\u06FF\u0750-\u077F\s\d\-]', '', text)
 
 def preprocess_documents(documents: list[str], config: Optional[NormalizationConfig] = None) -> list[str]:
     """

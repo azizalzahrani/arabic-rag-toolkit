@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arabic-rag-toolkit"
+version = "0.1.0"
+description = "Arabic-first Retrieval-Augmented Generation (RAG) toolkit with local-first fallbacks"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "Aziz Alzahrani" }
+]
+keywords = ["arabic", "rag", "nlp", "retrieval-augmented-generation", "search"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+  "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black>=23.0.0",
+  "flake8>=6.0.0",
+  "isort>=5.0.0",
+  "mypy>=1.0.0",
+  "pytest>=8.0.0",
+  "pytest-cov>=4.0.0",
+]
+embeddings = [
+  "sentence-transformers>=2.2.0",
+]
+chroma = [
+  "chromadb>=0.3.21",
+]
+faiss = [
+  "faiss-cpu>=1.7.4",
+]
+openai = [
+  "openai>=1.0.0",
+]
+anthropic = [
+  "anthropic>=0.7.0",
+]
+all = [
+  "anthropic>=0.7.0",
+  "chromadb>=0.3.21",
+  "faiss-cpu>=1.7.4",
+  "openai>=1.0.0",
+  "sentence-transformers>=2.2.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/azizalzahrani/arabic-rag-toolkit#readme"
+Issues = "https://github.com/azizalzahrani/arabic-rag-toolkit/issues"
+Source = "https://github.com/azizalzahrani/arabic-rag-toolkit"
+
+[tool.setuptools.packages.find]
+include = ["arabic_rag*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

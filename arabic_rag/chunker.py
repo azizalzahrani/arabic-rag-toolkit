@@ -28,7 +28,7 @@ class ChunkingConfig:
     """
     chunk_size: int = 300
     chunk_overlap: int = 50
-    min_chunk_size: int = 50
+    min_chunk_size: int = 1
     split_on_sentences: bool = True
     preserve_paragraphs: bool = True
 
@@ -164,7 +164,8 @@ class ArabicTextChunker:
             Chunk a single text block by size and overlap.
         """
         if len(text) <= self.config.chunk_size:
-            return [text] if len(text) >= self.config.min_chunk_size else []
+            stripped = text.strip()
+            return [stripped] if len(stripped) >= self.config.min_chunk_size else []
 
         chunks = []
         sentences = self._split_sentences(text) if self.config.split_on_sentences else [text]

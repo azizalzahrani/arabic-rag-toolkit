@@ -12,6 +12,7 @@ English:
 
 from typing import List, Optional
 from dataclasses import dataclass
+import hashlib
 import numpy as np
 
 
@@ -30,6 +31,7 @@ class EmbeddingConfig:
     batch_size: int = 32
     normalize: bool = True
     device: str = "cpu"
+    fallback_dimension: int = 384
 
 
 class ArabicEmbeddings:
@@ -78,12 +80,13 @@ class ArabicEmbeddings:
         """
         try:
             from sentence_transformers import SentenceTransformer
-            self.model = SentenceTransformer(self.config.model_name, device=self.config.device)
         except ImportError:
-            raise ImportError(
-                "sentence-transformers is required. "
-                "Install it with: pip install sentence-transformers"
-            )
+            self.model = None
+            self.backend = "hashing"
+            return
+
+        self.model = SentenceTransformer(self.config.model_name, device=self.config.device)
+        self.backend = "sentence-transformers"
 
     def embed_text(self, text: str) -> np.ndarray:
         """
@@ -110,7 +113,10 @@ class ArabicEmbeddings:
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
 
-        embedding = self.model.encode(text, convert_to_numpy=True)
+        if self.backend == "sentence-transformers":
+            embedding = self.model.encode(text, convert_to_numpy=True)
+        else:
+            embedding = self._hash_embed(text)
 
         if self.config.normalize:
             embedding = self._normalize_vector(embedding)
@@ -148,12 +154,15 @@ class ArabicEmbeddings:
         if not valid_texts:
             raise ValueError("All texts are empty or whitespace")
 
-        embeddings = self.model.encode(
-            valid_texts,
-            batch_size=self.config.batch_size,
-            convert_to_numpy=True,
-            show_progress_bar=show_progress_bar
-        )
+        if self.backend == "sentence-transformers":
+            embeddings = self.model.encode(
+                valid_texts,
+                batch_size=self.config.batch_size,
+                convert_to_numpy=True,
+                show_progress_bar=show_progress_bar
+            )
+        else:
+            embeddings = np.array([self._hash_embed(text) for text in valid_texts])
 
         if self.config.normalize:
             embeddings = np.array([self._normalize_vector(e) for e in embeddings])
@@ -282,6 +291,55 @@ class ArabicEmbeddings:
         if norm == 0:
             return vector
         return vector / norm
+
+    def _hash_embed(self, text: str) -> np.ndarray:
+        """
+        تضمين محلي خفيف - Lightweight local embedding
+
+        العربية:
+            إنشاء تضمين حتمي بدون الاعتماد على مكتبات خارجية.
+
+        English:
+            Build a deterministic embedding without external model dependencies.
+        """
+        dimension = self.config.fallback_dimension
+        vector = np.zeros(dimension, dtype=np.float32)
+
+        tokens = self._extract_features(text)
+        if not tokens:
+            return vector
+
+        for token in tokens:
+            digest = hashlib.sha256(token.encode("utf-8")).digest()
+            for offset in (0, 5):
+                index = int.from_bytes(digest[offset:offset + 4], "big") % dimension
+                sign = 1.0 if digest[offset + 4] % 2 == 0 else -1.0
+                vector[index] += sign
+
+        return vector
+
+    def _extract_features(self, text: str) -> List[str]:
+        """
+        استخراج سمات نصية - Extract text features
+
+        العربية:
+            مزج الكلمات وثلاثيات الأحرف لتحسين الاسترجاع المحلي البسيط.
+
+        English:
+            Blend tokens and character trigrams for simple local retrieval quality.
+        """
+        normalized = " ".join(text.strip().split())
+        if not normalized:
+            return []
+
+        tokens = normalized.split()
+        compact = normalized.replace(" ", "")
+        trigrams = [compact[i:i + 3] for i in range(max(len(compact) - 2, 0))]
+
+        if not trigrams and compact:
+            trigrams = [compact]
+
+        return tokens + trigrams
 
     def save_embeddings(self, embeddings: np.ndarray, filepath: str) -> None:
         """

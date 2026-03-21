@@ -24,7 +24,7 @@ def main():
 
     # تهيئة خط الأنابيب
     print("تهيئة خط أنابيب RAG...")
-    pipeline = ArabicRAGPipeline()
+    pipeline = ArabicRAGPipeline(vector_store="memory", llm_provider="local")
 
     # إضافة مستندات
     documents = [

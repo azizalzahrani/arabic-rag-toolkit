@@ -9,7 +9,7 @@ English:
     into a single integrated pipeline.
 """
 
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 import logging
 
@@ -80,16 +80,65 @@ class ArabicRAGPipeline:
         ```
     """
 
-    def __init__(self, config: Optional[PipelineConfig] = None):
+    def __init__(self, config: Optional[PipelineConfig] = None, **kwargs):
         """
         تهيئة خط الأنابيب - Initialize the pipeline
 
         Args:
             config: PipelineConfig - التكوين
         """
-        self.config = config or PipelineConfig()
+        self.config = self._build_config(config, kwargs)
         self._setup_logger()
         self._initialize_components()
+
+    def _build_config(self, config: Optional[PipelineConfig], overrides: Dict[str, Any]) -> PipelineConfig:
+        """
+        بناء التكوين - Build configuration
+
+        العربية:
+            دعم واجهة التكوين الكاملة مع اختصارات سهلة متوافقة مع الأمثلة.
+
+        English:
+            Support both full PipelineConfig and shortcut keyword arguments used by examples.
+        """
+        pipeline_config = config or PipelineConfig()
+        overrides = dict(overrides)
+
+        if "verbose" in overrides:
+            pipeline_config.verbose = overrides.pop("verbose")
+
+        if "embedding_model" in overrides:
+            pipeline_config.embedding_config.model_name = overrides.pop("embedding_model")
+
+        if "vector_store" in overrides:
+            pipeline_config.retrieval_config.vector_store_type = overrides.pop("vector_store")
+
+        if "vector_store_path" in overrides:
+            pipeline_config.retrieval_config.vector_store_path = overrides.pop("vector_store_path")
+
+        if "llm_provider" in overrides:
+            pipeline_config.generation_config.llm_provider = overrides.pop("llm_provider")
+
+        if "llm_model" in overrides:
+            pipeline_config.generation_config.model_name = overrides.pop("llm_model")
+
+        if "chunk_size" in overrides:
+            pipeline_config.chunking_config.chunk_size = overrides.pop("chunk_size")
+
+        if "chunk_overlap" in overrides:
+            pipeline_config.chunking_config.chunk_overlap = overrides.pop("chunk_overlap")
+
+        if "min_chunk_size" in overrides:
+            pipeline_config.chunking_config.min_chunk_size = overrides.pop("min_chunk_size")
+
+        if "similarity_threshold" in overrides:
+            pipeline_config.retrieval_config.similarity_threshold = overrides.pop("similarity_threshold")
+
+        if overrides:
+            unknown_arguments = ", ".join(sorted(overrides.keys()))
+            raise TypeError(f"Unknown pipeline arguments: {unknown_arguments}")
+
+        return pipeline_config
 
     def _setup_logger(self) -> None:
         """إعداد نظام السجلات - Setup logging"""
@@ -166,6 +215,56 @@ class ArabicRAGPipeline:
 
         self.logger.info("Documents added and indexed successfully")
 
+    def retrieve(self, question: str, top_k: Optional[int] = None) -> List[tuple]:
+        """
+        استرجاع المستندات - Retrieve relevant documents
+
+        العربية:
+            واجهة متوافقة مع الأمثلة لاسترجاع المستندات فقط بدون توليد إجابة.
+
+        English:
+            Example-friendly API for retrieving documents without generating an answer.
+        """
+        processed_question = self.preprocessor.normalize_query(question)
+        return self.retriever.retrieve(processed_question, top_k=top_k)
+
+    def generate_answer(
+        self,
+        retrieval_results: List[tuple],
+        question: str,
+        instructions: Optional[str] = None,
+        return_sources: bool = False,
+    ) -> str:
+        """
+        توليد إجابة من نتائج الاسترجاع - Generate an answer from retrieval results
+
+        العربية:
+            واجهة متوافقة مع الأمثلة لبناء إجابة من النتائج المسترجعة.
+
+        English:
+            Example-friendly API to build an answer from retrieved results.
+        """
+        documents = []
+        for item in retrieval_results:
+            if isinstance(item, tuple):
+                documents.append(item[0])
+            else:
+                documents.append(item)
+
+        context = "\n".join(documents)
+        answer = self.generator.generate_answer(question, context=context, instructions=instructions)
+
+        if return_sources and retrieval_results:
+            answer += "\n\n---\n**المصادر:**\n"
+            for index, item in enumerate(retrieval_results, 1):
+                score = item[1] if isinstance(item, tuple) and len(item) > 1 else None
+                if score is None:
+                    answer += f"[{index}]\n"
+                else:
+                    answer += f"[{index}] (درجة التشابه: {score:.2f})\n"
+
+        return answer
+
     def query(self, question: str, top_k: Optional[int] = None,
               return_sources: bool = True) -> str:
         """
@@ -196,27 +295,14 @@ class ArabicRAGPipeline:
         self.logger.info(f"Processing query: {question}")
 
         # معالجة السؤال
-        processed_question = self.preprocessor.normalize(question)
-        self.logger.debug(f"Processed question: {processed_question}")
-
-        # البحث عن المستندات ذات الصلة
-        relevant_docs = self.retriever.retrieve(processed_question, top_k=top_k)
+        relevant_docs = self.retrieve(question, top_k=top_k)
         self.logger.info(f"Retrieved {len(relevant_docs)} relevant documents")
 
         if not relevant_docs:
             return "عذراً، لم أتمكن من العثور على معلومات ذات صلة بسؤالك."
 
-        # تنسيق السياق
-        context = "\n".join([doc for doc, _ in relevant_docs])
-
-        # توليد الإجابة
         self.logger.debug("Generating response...")
-        answer = self.generator.generate_answer(question, context=context)
-
-        if return_sources:
-            answer += "\n\n---\n**المصادر:**\n"
-            for i, (doc, score) in enumerate(relevant_docs, 1):
-                answer += f"[{i}] (درجة التشابه: {score:.2f})\n"
+        answer = self.generate_answer(relevant_docs, question, return_sources=return_sources)
 
         self.logger.info("Response generated successfully")
         return answer
@@ -317,7 +403,7 @@ class ArabicRAGPipeline:
         return {
             "total_documents": len(self.documents),
             "embedding_dimension": self.embeddings.get_embedding_dimension(),
-            "vector_store_type": self.config.retrieval_config.vector_store_type,
+            "vector_store_type": getattr(self.retriever, "vector_store_type", self.config.retrieval_config.vector_store_type),
             "preprocessing_config": {
                 "remove_diacritics": self.config.normalization_config.remove_diacritics,
                 "normalize_alef": self.config.normalization_config.normalize_alef,

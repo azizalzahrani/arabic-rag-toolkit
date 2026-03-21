@@ -11,6 +11,8 @@ English:
 from arabic_rag.pipeline import ArabicRAGPipeline, PipelineConfig
 from arabic_rag.chunker import ChunkingConfig
 from arabic_rag.embeddings import EmbeddingConfig
+from arabic_rag.retriever import RetrievalConfig
+from arabic_rag.generator import GenerationConfig
 
 
 def main():
@@ -36,6 +38,8 @@ def main():
         embedding_config=EmbeddingConfig(
             model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         ),
+        retrieval_config=RetrievalConfig(vector_store_type="memory"),
+        generation_config=GenerationConfig(llm_provider="local"),
         verbose=True
     )
 

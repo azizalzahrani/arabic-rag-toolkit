@@ -182,7 +182,7 @@ class WriterAgent:
             issues.append("مسافات متعددة غير ضرورية")
 
         # التحقق من علامات الترقيم
-        if not text.endswith(('।', '؟', '!', '.')):
+        if not text.endswith(('۔', '؟', '!', '.')):
             issues.append("النص لا ينتهي بعلامة ترقيم مناسبة")
 
         # التحقق من الأقواس المتطابقة
