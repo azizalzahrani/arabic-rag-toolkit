@@ -55,6 +55,9 @@ jobs:
       contents: write
 
     steps:
+      # gh needs a git repository to infer the target repo and verify the tag
+      - uses: actions/checkout@v4
+
       - name: Download distributions
         uses: actions/download-artifact@v4
         with:
