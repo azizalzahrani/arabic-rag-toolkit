@@ -35,7 +35,7 @@ class ChunkingConfig:
 
 class ArabicTextChunker:
     """
-    معقم النصوص العربية - Arabic Text Chunker
+    مُقطِّع النصوص العربية - Arabic Text Chunker
 
     العربية:
         فئة متخصصة في تقطيع النصوص العربية بشكل ذكي. تحاول تقسيم النص عند
@@ -57,32 +57,42 @@ class ArabicTextChunker:
         ```
     """
 
-    # جملة الترقيم العربي
-    SENTENCE_DELIMITERS = {
-        '۔': '۔',      # Arabic full stop
-        '؟': '؟',      # Arabic question mark
-        '؛': '؛',      # Arabic semicolon
-        '!': '!',      # Exclamation
-        '.': '.',      # Period
-        '?': '?',      # Question mark
-    }
+    # علامات نهاية الجملة - Sentence-ending punctuation
+    SENTENCE_DELIMITERS = (
+        '۔',      # Arabic full stop
+        '؟',      # Arabic question mark
+        '؛',      # Arabic semicolon
+        '!',      # Exclamation
+        '.',      # Period
+        '?',      # Question mark
+    )
 
-    # علامات الفواصل
-    CLAUSE_DELIMITERS = {
-        '،': '،',      # Arabic comma
-        '،': '،',      # Alternative comma
-        ',': ',',      # Regular comma
-    }
+    # علامات الفواصل - Clause punctuation
+    CLAUSE_DELIMITERS = (
+        '،',      # Arabic comma
+        ',',      # Regular comma
+    )
 
-    def __init__(self, config: Optional[ChunkingConfig] = None):
+    def __init__(self, config: Optional[ChunkingConfig] = None, **kwargs):
         """
-        تهيئة معقم النصوص - Initialize the chunker
+        تهيئة مُقطِّع النصوص - Initialize the chunker
 
         Args:
             config: ChunkingConfig - التكوين (يستخدم الافتراضي إن لم يُحدد)
-            chunk_size: int - حجم الجزء بالأحرف
-            chunk_overlap: int - حجم التداخل بين الأجزاء
+            **kwargs: اختصارات تكوين مثل chunk_size و chunk_overlap -
+                ChunkingConfig field shortcuts, e.g. chunk_size, chunk_overlap
+
+        Example:
+            ```python
+            chunker = ArabicTextChunker(chunk_size=300, chunk_overlap=50)
+            ```
         """
+        if config is not None and kwargs:
+            raise TypeError("Pass either a ChunkingConfig or keyword shortcuts, not both")
+
+        if kwargs:
+            config = ChunkingConfig(**kwargs)
+
         self.config = config or ChunkingConfig()
         self._validate_config()
 
@@ -226,8 +236,7 @@ class ArabicTextChunker:
             Split text at punctuation marks while preserving delimiters.
         """
         # إنشاء نمط يطابق أي علامة ترقيم
-        delimiter_pattern = '|'.join(re.escape(d) for d in self.SENTENCE_DELIMITERS.keys())
-        delimiter_pattern = f'([{delimiter_pattern}])'
+        delimiter_pattern = '([' + ''.join(re.escape(d) for d in self.SENTENCE_DELIMITERS) + '])'
 
         sentences = re.split(delimiter_pattern, text)
 
@@ -314,8 +323,7 @@ class ArabicTextChunker:
         English:
             Split text at clause delimiters (commas, semicolons).
         """
-        delimiter_pattern = '|'.join(re.escape(d) for d in self.CLAUSE_DELIMITERS.keys())
-        delimiter_pattern = f'([{delimiter_pattern}])'
+        delimiter_pattern = '([' + ''.join(re.escape(d) for d in self.CLAUSE_DELIMITERS) + '])'
 
         clauses = re.split(delimiter_pattern, text)
 
@@ -347,15 +355,43 @@ class ArabicTextChunker:
         overlapped_chunks = [chunks[0]]
 
         for i in range(1, len(chunks)):
-            # استخراج آخر جزء من الجزء السابق
-            prev_chunk = chunks[i - 1]
-            overlap_text = prev_chunk[-self.config.chunk_overlap:] if len(prev_chunk) > self.config.chunk_overlap else prev_chunk
+            # استخراج آخر جزء من الجزء السابق مع احترام حدود الكلمات
+            # Take the tail of the previous chunk, respecting word boundaries
+            # so Arabic words are never cut in half.
+            overlap_text = self._tail_at_word_boundary(chunks[i - 1], self.config.chunk_overlap)
 
             # إضافة الجزء الحالي مع التداخل
-            new_chunk = overlap_text + " " + chunks[i]
-            overlapped_chunks.append(new_chunk)
+            if overlap_text:
+                overlapped_chunks.append(overlap_text + " " + chunks[i])
+            else:
+                overlapped_chunks.append(chunks[i])
 
         return overlapped_chunks
+
+    @staticmethod
+    def _tail_at_word_boundary(text: str, max_length: int) -> str:
+        """
+        اقتطاع نهاية النص عند حدود الكلمات - Tail of text cut at a word boundary
+
+        العربية:
+            إرجاع آخر جزء من النص بطول أقصاه max_length دون قطع أي كلمة.
+
+        English:
+            Return the trailing part of the text, at most max_length characters,
+            without splitting any word.
+        """
+        if len(text) <= max_length:
+            return text
+
+        tail = text[-max_length:]
+        if text[-max_length - 1] != ' ':
+            # كنا في منتصف كلمة، تجاوزها - We landed mid-word; skip past it.
+            space_index = tail.find(' ')
+            if space_index == -1:
+                return ""
+            tail = tail[space_index + 1:]
+
+        return tail.strip()
 
     def get_chunk_statistics(self, chunks: List[str]) -> dict:
         """

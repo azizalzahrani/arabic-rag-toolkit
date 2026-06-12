@@ -13,16 +13,15 @@ English:
     with intelligent chunking, normalization, and Arabic embeddings.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Aziz Alzahrani"
-__email__ = "aziz@example.com"
 
 from arabic_rag.preprocessor import ArabicTextPreprocessor
 from arabic_rag.chunker import ArabicTextChunker
 from arabic_rag.embeddings import ArabicEmbeddings
 from arabic_rag.retriever import ArabicRetriever
 from arabic_rag.generator import ArabicResponseGenerator
-from arabic_rag.pipeline import ArabicRAGPipeline
+from arabic_rag.pipeline import ArabicRAGPipeline, PipelineConfig, config_from_env
 
 __all__ = [
     "ArabicTextPreprocessor",
@@ -31,4 +30,6 @@ __all__ = [
     "ArabicRetriever",
     "ArabicResponseGenerator",
     "ArabicRAGPipeline",
+    "PipelineConfig",
+    "config_from_env",
 ]

@@ -12,6 +12,7 @@ English:
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 import logging
+import os
 
 from arabic_rag.preprocessor import ArabicTextPreprocessor, NormalizationConfig
 from arabic_rag.chunker import ArabicTextChunker, ChunkingConfig
@@ -31,11 +32,11 @@ class PipelineConfig:
     English:
         Comprehensive configuration for all pipeline components.
     """
-    normalization_config: NormalizationConfig = None
-    chunking_config: ChunkingConfig = None
-    embedding_config: EmbeddingConfig = None
-    retrieval_config: RetrievalConfig = None
-    generation_config: GenerationConfig = None
+    normalization_config: Optional[NormalizationConfig] = None
+    chunking_config: Optional[ChunkingConfig] = None
+    embedding_config: Optional[EmbeddingConfig] = None
+    retrieval_config: Optional[RetrievalConfig] = None
+    generation_config: Optional[GenerationConfig] = None
     verbose: bool = False
 
     def __post_init__(self):
@@ -50,6 +51,56 @@ class PipelineConfig:
             self.retrieval_config = RetrievalConfig()
         if self.generation_config is None:
             self.generation_config = GenerationConfig()
+
+
+def config_from_env() -> PipelineConfig:
+    """
+    بناء التكوين من متغيرات البيئة - Build a PipelineConfig from environment variables
+
+    العربية:
+        قراءة المتغيرات الموثقة في ‎.env.example‎ وبناء تكوين كامل منها.
+        أي متغير غير معرّف يستخدم القيمة الافتراضية.
+
+    English:
+        Read the variables documented in `.env.example` and build a full config.
+        Any unset variable falls back to its default value.
+
+    Supported variables:
+        EMBEDDING_MODEL, VECTOR_STORE, VECTOR_STORE_PATH, LLM_PROVIDER,
+        OPENAI_MODEL / ANTHROPIC_MODEL (read by the generator),
+        CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, TEMPERATURE, MAX_TOKENS
+
+    Example:
+        ```python
+        from arabic_rag.pipeline import ArabicRAGPipeline, config_from_env
+
+        pipeline = ArabicRAGPipeline(config=config_from_env())
+        # أو ببساطة - or simply:
+        pipeline = ArabicRAGPipeline.from_env()
+        ```
+    """
+    config = PipelineConfig()
+
+    if os.getenv("EMBEDDING_MODEL"):
+        config.embedding_config.model_name = os.environ["EMBEDDING_MODEL"]
+    if os.getenv("VECTOR_STORE"):
+        config.retrieval_config.vector_store_type = os.environ["VECTOR_STORE"]
+    if os.getenv("VECTOR_STORE_PATH"):
+        config.retrieval_config.vector_store_path = os.environ["VECTOR_STORE_PATH"]
+    if os.getenv("LLM_PROVIDER"):
+        config.generation_config.llm_provider = os.environ["LLM_PROVIDER"]
+    if os.getenv("CHUNK_SIZE"):
+        config.chunking_config.chunk_size = int(os.environ["CHUNK_SIZE"])
+    if os.getenv("CHUNK_OVERLAP"):
+        config.chunking_config.chunk_overlap = int(os.environ["CHUNK_OVERLAP"])
+    if os.getenv("TOP_K"):
+        config.retrieval_config.top_k = int(os.environ["TOP_K"])
+    if os.getenv("TEMPERATURE"):
+        config.generation_config.temperature = float(os.environ["TEMPERATURE"])
+    if os.getenv("MAX_TOKENS"):
+        config.generation_config.max_tokens = int(os.environ["MAX_TOKENS"])
+
+    return config
 
 
 class ArabicRAGPipeline:
@@ -67,7 +118,7 @@ class ArabicRAGPipeline:
     Attributes:
         config: PipelineConfig - التكوين الشامل
         preprocessor: ArabicTextPreprocessor - معالج النصوص
-        chunker: ArabicTextChunker - معقم النصوص
+        chunker: ArabicTextChunker - مُقطِّع النصوص
         embeddings: ArabicEmbeddings - نموذج التضمين
         retriever: ArabicRetriever - محرك البحث
         generator: ArabicResponseGenerator - منشئ الإجابات
@@ -90,6 +141,26 @@ class ArabicRAGPipeline:
         self.config = self._build_config(config, kwargs)
         self._setup_logger()
         self._initialize_components()
+
+    @classmethod
+    def from_env(cls, **kwargs) -> "ArabicRAGPipeline":
+        """
+        إنشاء خط أنابيب من متغيرات البيئة - Build a pipeline from environment variables
+
+        العربية:
+            إنشاء خط الأنابيب اعتماداً على المتغيرات الموثقة في ‎.env.example‎،
+            مع إمكانية تمرير اختصارات إضافية تتجاوز قيم البيئة.
+
+        English:
+            Build the pipeline from the variables documented in `.env.example`.
+            Extra keyword shortcuts override environment values.
+
+        Example:
+            ```python
+            pipeline = ArabicRAGPipeline.from_env()
+            ```
+        """
+        return cls(config=config_from_env(), **kwargs)
 
     def _build_config(self, config: Optional[PipelineConfig], overrides: Dict[str, Any]) -> PipelineConfig:
         """
@@ -183,7 +254,8 @@ class ArabicRAGPipeline:
 
         Args:
             documents: List[str] - قائمة المستندات
-            preprocess: bool - هل يتم معالجة المستندات مسبقاً
+            preprocess: bool - استخدام نسخة مطبّعة للتضمين والبحث
+                (يبقى النص الأصلي محفوظاً كما هو للعرض في الإجابات والمصادر)
 
         Example:
             ```python
@@ -193,24 +265,26 @@ class ArabicRAGPipeline:
         """
         self.logger.info(f"Adding {len(documents)} documents to pipeline...")
 
-        # معالجة المستندات
-        if preprocess:
-            processed_docs = [
-                self.preprocessor.normalize(doc) for doc in documents
-            ]
-        else:
-            processed_docs = documents
-
-        # تقطيع المستندات
+        # تقطيع المستندات الأصلية (للحفاظ على التشكيل والهمزات عند العرض)
+        # Chunk the ORIGINAL documents so the stored text keeps its
+        # diacritics and hamzas for display.
         chunks = []
-        for doc in processed_docs:
+        for doc in documents:
             doc_chunks = self.chunker.chunk(doc)
             chunks.extend(doc_chunks)
 
         self.logger.info(f"Documents split into {len(chunks)} chunks")
 
+        # التطبيع يُستخدم للتضمين فقط حتى يتطابق مع الاستعلامات المطبّعة
+        # Normalization is applied to the embedded copy only, matching
+        # the normalized queries used at retrieval time.
+        if preprocess:
+            embedding_texts = [self.preprocessor.normalize(chunk) for chunk in chunks]
+        else:
+            embedding_texts = None
+
         # إضافة الأجزاء إلى المحرك
-        self.retriever.add_documents(chunks)
+        self.retriever.add_documents(chunks, embedding_texts=embedding_texts)
         self.documents.extend(chunks)
 
         self.logger.info("Documents added and indexed successfully")
@@ -256,12 +330,15 @@ class ArabicRAGPipeline:
 
         if return_sources and retrieval_results:
             answer += "\n\n---\n**المصادر:**\n"
-            for index, item in enumerate(retrieval_results, 1):
-                score = item[1] if isinstance(item, tuple) and len(item) > 1 else None
-                if score is None:
-                    answer += f"[{index}]\n"
+            for index, (document, score) in enumerate(
+                zip(documents, retrieval_results), 1
+            ):
+                snippet = document if len(document) <= 100 else document[:100].rstrip() + "..."
+                score_value = score[1] if isinstance(score, tuple) and len(score) > 1 else None
+                if score_value is None:
+                    answer += f"[{index}] {snippet}\n"
                 else:
-                    answer += f"[{index}] (درجة التشابه: {score:.2f})\n"
+                    answer += f"[{index}] {snippet} (درجة التشابه: {score_value:.2f})\n"
 
         return answer
 
@@ -453,12 +530,14 @@ class ArabicRAGPipeline:
         إعادة تعيين خط الأنابيب - Reset the pipeline
 
         العربية:
-            مسح جميع المستندات والمتجهات وإعادة تهيئة النظام
+            مسح جميع المستندات والمتجهات وإعادة تهيئة المخزن المتجه
+            مع الاحتفاظ بنموذج التضمين المحمّل لتجنب إعادة التحميل البطيئة.
 
         English:
-            Clear all documents and vectors and reinitialize the system.
+            Clear all documents and vectors and reinitialize the vector store,
+            keeping the already-loaded embedding model to avoid a slow reload.
         """
         self.logger.info("Resetting pipeline...")
         self.documents = []
-        self._initialize_components()
+        self.retriever = ArabicRetriever(self.config.retrieval_config, self.embeddings)
         self.logger.info("Pipeline reset successfully")

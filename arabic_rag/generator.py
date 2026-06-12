@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import os
 import re
+import warnings
 
 
 @dataclass
@@ -29,11 +30,41 @@ class GenerationConfig:
         Configuration for response generation parameters.
     """
     llm_provider: str = "local"  # openai, anthropic, local
-    model_name: str = "gpt-4"
+    model_name: Optional[str] = None  # provider-specific default when None
     temperature: float = 0.3
     max_tokens: int = 2000
     top_p: float = 0.9
     timeout: int = 30
+
+
+# النماذج الافتراضية لكل مزود - Per-provider default models.
+# Override via GenerationConfig.model_name or the OPENAI_MODEL / ANTHROPIC_MODEL
+# environment variables.
+DEFAULT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-sonnet-4-6",
+}
+
+
+def resolve_model_name(config: "GenerationConfig", provider: str) -> str:
+    """
+    تحديد اسم النموذج الفعلي - Resolve the effective model name
+
+    العربية:
+        ترتيب الأولوية: التكوين الصريح، ثم متغير البيئة، ثم الافتراضي للمزود.
+
+    English:
+        Priority order: explicit config, then environment variable,
+        then the provider default.
+    """
+    if config.model_name:
+        return config.model_name
+
+    env_var = {"openai": "OPENAI_MODEL", "anthropic": "ANTHROPIC_MODEL"}.get(provider)
+    if env_var and os.getenv(env_var):
+        return os.environ[env_var]
+
+    return DEFAULT_MODELS.get(provider, "")
 
 
 class LLMProvider(ABC):
@@ -85,7 +116,7 @@ class OpenAIProvider(LLMProvider):
         """
         try:
             response = self.client.chat.completions.create(
-                model=config.model_name,
+                model=resolve_model_name(config, "openai"),
                 messages=[
                     {
                         "role": "system",
@@ -138,8 +169,10 @@ class AnthropicProvider(LLMProvider):
         """
         try:
             message = self.client.messages.create(
-                model=config.model_name,
+                model=resolve_model_name(config, "anthropic"),
                 max_tokens=config.max_tokens,
+                temperature=config.temperature,
+                top_p=config.top_p,
                 system="أنت مساعد ذكي متخصص في الإجابة على الأسئلة باللغة العربية بشكل دقيق وشامل.",
                 messages=[
                     {
@@ -292,35 +325,45 @@ class ArabicResponseGenerator:
         """
         provider_type = self.config.llm_provider.lower()
 
-        if provider_type == "openai":
-            if not os.getenv("OPENAI_API_KEY"):
-                self.provider = LocalExtractiveProvider()
-                self.provider_name = "local"
-                return
-
-            try:
-                self.provider = OpenAIProvider()
-                self.provider_name = "openai"
-            except ImportError:
-                self.provider = LocalExtractiveProvider()
-                self.provider_name = "local"
-        elif provider_type == "anthropic":
-            if not os.getenv("ANTHROPIC_API_KEY"):
-                self.provider = LocalExtractiveProvider()
-                self.provider_name = "local"
-                return
-
-            try:
-                self.provider = AnthropicProvider()
-                self.provider_name = "anthropic"
-            except ImportError:
-                self.provider = LocalExtractiveProvider()
-                self.provider_name = "local"
-        elif provider_type == "local":
+        if provider_type == "local":
             self.provider = LocalExtractiveProvider()
             self.provider_name = "local"
-        else:
+            return
+
+        if provider_type not in ("openai", "anthropic"):
             raise ValueError(f"Unknown LLM provider: {self.config.llm_provider}")
+
+        api_key_var = "OPENAI_API_KEY" if provider_type == "openai" else "ANTHROPIC_API_KEY"
+        provider_class = OpenAIProvider if provider_type == "openai" else AnthropicProvider
+
+        if not os.getenv(api_key_var):
+            self._fall_back_to_local(f"{api_key_var} is not set")
+            return
+
+        try:
+            self.provider = provider_class()
+            self.provider_name = provider_type
+        except ImportError as error:
+            self._fall_back_to_local(str(error))
+
+    def _fall_back_to_local(self, reason: str) -> None:
+        """
+        التراجع إلى المزود المحلي - Fall back to the local provider
+
+        العربية:
+            استخدام المزود المحلي مع تحذير يوضح السبب.
+
+        English:
+            Use the local extractive provider and warn about why.
+        """
+        warnings.warn(
+            f"Requested LLM provider '{self.config.llm_provider}' is unavailable "
+            f"({reason}). Falling back to the local extractive provider.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        self.provider = LocalExtractiveProvider()
+        self.provider_name = "local"
 
     def generate_answer(self, question: str, context: str = "",
                        instructions: Optional[str] = None) -> str:

@@ -70,6 +70,22 @@ class TestArabicTextPreprocessor:
         # (لكن قد تكون هناك معالجات أخرى)
         assert isinstance(result, str)
 
+    def test_alef_wasla_normalized(self, preprocessor):
+        """ألف الوصل تُطبّع إلى ألف عادية"""
+        result = preprocessor.normalize("ٱلرحمن")
+        assert result == "الرحمن"
+
+    def test_dagger_alef_removed(self, preprocessor):
+        """الألف الخنجرية تُزال مع التشكيل"""
+        result = preprocessor.normalize("ٱلرَّحْمَٰن")
+        assert result == "الرحمن"
+
+    def test_combining_hamza_marks_removed(self, preprocessor):
+        """علامات الهمزة المركبة تُزال"""
+        # ياء + همزة مركبة فوقها (U+064A U+0654)
+        result = preprocessor.normalize("شئ")
+        assert "ٔ" not in result
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

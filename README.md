@@ -10,11 +10,13 @@
 ### المميزات الرئيسية
 - **تقطيع ذكي للنصوص العربية**: معالجة التصريفات والبادئات واللواحق العربية بكفاءة
 - **تطبيع النصوص العربية**: إزالة التشكيل، توحيد أشكال الألف، ومعالجة التطويل
+- **بحث مطبّع وعرض أصلي**: التطبيع يُستخدم للمطابقة فقط، بينما تُعرض الإجابات والمصادر بالرسم الأصلي للنص (الهمزات والتشكيل محفوظة)
 - **نماذج تضمين عربية**: دعم نماذج متخصصة مثل CAMeL وAraBART والنماذج متعددة اللغات
 - **أنظمة متعددة الوكلاء**: أدوات مدمجة لتنسيق أدوار البحث والتحقق والكتابة
 - **مرونة في اختيار النماذج**: دعم OpenAI و Anthropic والنماذج المحلية
 - **تشغيل محلي افتراضي**: استرجاع وإجابة محليان بدون الحاجة إلى مفاتيح API عند البداية
 - **قواعد بيانات متعددة**: دعم الذاكرة المحلية و FAISS و ChromaDB
+- **تكوين من البيئة**: `ArabicRAGPipeline.from_env()` يقرأ الإعدادات الموثقة في `.env.example`
 - **أمثلة عملية**: أمثلة حقيقية تطبق على وثائق سعودية ونظام معالجة متكامل
 
 ---
@@ -29,11 +31,14 @@ A comprehensive suite of tools for building Retrieval-Augmented Generation (RAG)
 ### Key Features
 - **Arabic-Aware Text Chunking**: Intelligently handles Arabic morphology, prefixes, and suffixes
 - **Arabic Text Normalization**: Removes diacritics, normalizes alef variants, and handles tatweel
+- **Normalized Matching, Original Display**: Normalization is used for matching only; answers and sources keep the original orthography (hamzas and diacritics preserved)
 - **Arabic Embedding Models**: Supports CAMeL, AraBART, and multilingual embedding models
 - **Multi-Agent Utilities**: Built-in research, validation, and writing agents
 - **Model Flexibility**: Support for OpenAI, Anthropic, and local LLMs
 - **Local-First Defaults**: Works without API keys on day one using local fallbacks
 - **Multiple Vector Stores**: In-memory, FAISS, and ChromaDB support
+- **Environment-Based Config**: `ArabicRAGPipeline.from_env()` reads the settings documented in `.env.example`
+- **Typed Package**: Ships a `py.typed` marker for type-checker support
 - **Practical Examples**: Real-world examples with Saudi regulatory documents
 
 ## Why This Repo Exists
@@ -165,17 +170,21 @@ for i, chunk in enumerate(chunks):
 arabic-rag-toolkit/
 ├── .github/
 │   └── workflows/
-│       └── tests.yml         # GitHub Actions CI
+│       ├── tests.yml           # GitHub Actions CI (Python 3.9 - 3.13)
+│       └── release.yml         # PyPI trusted publishing on tags
 ├── README.md
 ├── CONTRIBUTING.md
+├── RELEASING.md
 ├── LICENSE
+├── MANIFEST.in
 ├── pyproject.toml
 ├── setup.py
 ├── requirements.txt
 ├── .gitignore
-├── .env.example
+├── .env.example                # متغيرات يقرأها from_env()
 ├── arabic_rag/
 │   ├── __init__.py
+│   ├── py.typed                # علامة دعم فحص الأنواع
 │   ├── chunker.py              # تقطيع النصوص العربية
 │   ├── embeddings.py           # نماذج التضمين العربية
 │   ├── retriever.py            # استرجاع الوثائق
@@ -197,7 +206,10 @@ arabic-rag-toolkit/
 │   └── saudi_regulations.py    # معالجة الوثائق السعودية
 ├── tests/
 │   ├── __init__.py
+│   ├── test_api_compatibility.py
 │   ├── test_chunker.py
+│   ├── test_embeddings.py
+│   ├── test_generator.py
 │   ├── test_preprocessor.py
 │   └── test_pipeline.py
 └── docs/
@@ -263,13 +275,23 @@ arabic-rag-toolkit/
 
 ## البيئة والإعدادات | Configuration
 
+The variables in `.env.example` are read by `ArabicRAGPipeline.from_env()`.
+Export them in your shell (or load the file with `python-dotenv`) and build
+the pipeline in one line:
+
+```python
+from arabic_rag import ArabicRAGPipeline
+
+pipeline = ArabicRAGPipeline.from_env()
+```
+
 ### `.env.example`
 ```bash
 # LLM APIs
 OPENAI_API_KEY=your-openai-key-here
 ANTHROPIC_API_KEY=your-anthropic-key-here
 
-# Embedding Model
+# Embedding Model (requires the [embeddings] extra)
 EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 
 # Vector Store Choice
@@ -278,9 +300,9 @@ VECTOR_STORE=memory  # Options: memory, chroma, faiss
 # LLM Provider
 LLM_PROVIDER=local  # Options: local, openai, anthropic
 
-# Model Names
-OPENAI_MODEL=your-openai-model-name
-ANTHROPIC_MODEL=your-anthropic-model-name
+# Model Names (optional; defaults: gpt-4o-mini / claude-sonnet-4-6)
+# OPENAI_MODEL=gpt-4o-mini
+# ANTHROPIC_MODEL=claude-sonnet-4-6
 
 # Vector Store Path
 VECTOR_STORE_PATH=./data/vector_store
@@ -288,6 +310,11 @@ VECTOR_STORE_PATH=./data/vector_store
 # Chunk Settings
 CHUNK_SIZE=300
 CHUNK_OVERLAP=50
+
+# Retrieval and Generation
+TOP_K=5
+TEMPERATURE=0.3
+MAX_TOKENS=2000
 ```
 
 ---
@@ -364,6 +391,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Version**: 0.1.0
-**Last Updated**: 2026-03-22
+**Version**: 0.1.1
+**Last Updated**: 2026-06-13
 **Status**: Active Development

@@ -87,7 +87,7 @@ class TestArabicRAGPipeline:
         assert len(normalized) > 0
 
     def test_chunker_integration(self, pipeline):
-        """اختبار تكامل معقم النصوص"""
+        """اختبار تكامل مُقطِّع النصوص"""
         text = "نص طويل جداً " * 20
         chunks = pipeline.chunker.chunk(text)
         assert isinstance(chunks, list)

@@ -192,8 +192,11 @@ class ValidatorAgent:
             "invalid_count": total_count - valid_count,
             "validity_rate": valid_count / total_count if total_count > 0 else 0,
             "average_similarity": sum(
-                v["similarity_score"] for v in self.validation_log if v.get("similarity_score")
-            ) / max(len([v for v in self.validation_log if v.get("similarity_score")]), 1),
+                v["similarity_score"] for v in self.validation_log
+                if v.get("similarity_score") is not None
+            ) / max(len([
+                v for v in self.validation_log if v.get("similarity_score") is not None
+            ]), 1),
             "average_document_length": sum(v["document_length"] for v in self.validation_log) / total_count,
         }
 

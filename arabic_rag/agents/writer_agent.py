@@ -149,9 +149,11 @@ class WriterAgent:
         Returns:
             str - الملخص
         """
-        # تقسيم إلى جمل
-        sentences = answer.split('.')
-        sentences = [s.strip() + '.' for s in sentences if s.strip()]
+        # تقسيم إلى جمل مع دعم علامات الترقيم العربية
+        # Split into sentences, supporting Arabic punctuation too.
+        import re
+        sentences = re.split(r'(?<=[\.\!\؟\?])\s+', answer.strip())
+        sentences = [s.strip() for s in sentences if s.strip()]
 
         # اختيار أهم الجمل
         summary_sentences = sentences[:max_sentences]
@@ -192,7 +194,7 @@ class WriterAgent:
         return {
             "has_issues": len(issues) > 0,
             "issues": issues,
-            "quality_score": 1.0 - (len(issues) * 0.2)
+            "quality_score": max(0.0, 1.0 - (len(issues) * 0.2))
         }
 
     def get_writing_history(self) -> List[dict]:
@@ -235,9 +237,7 @@ class WriterAgent:
 
     def _generate_introduction(self, answer: str) -> str:
         """توليد مقدمة"""
-        # استخراج أول جملة
-        first_sentence = answer.split('.')[0] if '.' in answer else answer[:50]
-        return f"فيما يلي الإجابة على سؤالك:"
+        return "فيما يلي الإجابة على سؤالك:"
 
     def _generate_conclusion(self, answer: str) -> str:
         """توليد خاتمة"""

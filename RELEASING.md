@@ -10,7 +10,7 @@ This repository is configured for tag-based releases.
 
 ## Release Steps
 
-1. Update the version in `pyproject.toml` and `arabic_rag/__init__.py`.
+1. Update the version in `pyproject.toml` and `arabic_rag/__init__.py`, and add an entry to `CHANGELOG.md`.
 2. Run local checks:
 
 ```bash

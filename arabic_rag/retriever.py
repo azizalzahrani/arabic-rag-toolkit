@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import os
+import warnings
 
 
 @dataclass
@@ -93,15 +94,13 @@ class MemoryVectorStore(VectorStore):
         query = np.array(query_embedding, dtype="float32")
         query_norm = np.linalg.norm(query)
 
-        scores = []
-        for document, embedding in zip(self.documents, self.embeddings):
-            vector = np.array(embedding, dtype="float32")
-            denominator = query_norm * np.linalg.norm(vector)
-            similarity = float(np.dot(query, vector) / denominator) if denominator else 0.0
-            scores.append((document, similarity))
+        matrix = np.array(self.embeddings, dtype="float32")
+        norms = np.linalg.norm(matrix, axis=1) * query_norm
+        dots = matrix @ query
+        similarities = np.divide(dots, norms, out=np.zeros_like(dots), where=norms != 0)
 
-        scores.sort(key=lambda item: item[1], reverse=True)
-        return scores[:top_k]
+        order = np.argsort(similarities)[::-1][:top_k]
+        return [(self.documents[i], float(similarities[i])) for i in order]
 
     def save(self, path: str) -> None:
         import pickle
@@ -154,6 +153,7 @@ class ChromaVectorStore(VectorStore):
         os.makedirs(persist_directory, exist_ok=True)
         self.client = chromadb.PersistentClient(path=persist_directory)
         self.collection = None
+        self.collection_name = "arabic_documents"
         self.documents = []
         self.embeddings = []
 
@@ -167,9 +167,10 @@ class ChromaVectorStore(VectorStore):
         # حذف المجموعة القديمة إن وجدت
         try:
             self.client.delete_collection(name=collection_name)
-        except:
+        except Exception:
             pass
 
+        self.collection_name = collection_name
         self.collection = self.client.create_collection(
             name=collection_name,
             metadata={"hnsw:space": "cosine"}
@@ -186,13 +187,19 @@ class ChromaVectorStore(VectorStore):
         if not self.collection:
             self.create_collection()
 
+        if len(documents) == 0:
+            return
+
         start_index = len(self.documents)
-        for i, (doc, embedding) in enumerate(zip(documents, embeddings), start=start_index):
-            self.collection.add(
-                documents=[doc],
-                embeddings=[embedding.tolist()],
-                ids=[f"doc_{i}"]
-            )
+        embedding_lists = [
+            embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
+            for embedding in embeddings
+        ]
+        self.collection.add(
+            documents=list(documents),
+            embeddings=embedding_lists,
+            ids=[f"doc_{i}" for i in range(start_index, start_index + len(documents))],
+        )
 
         self.documents.extend(documents)
         self.embeddings.extend(embeddings)
@@ -211,9 +218,10 @@ class ChromaVectorStore(VectorStore):
         if not self.collection or not self.documents:
             return []
 
+        query_list = query_embedding.tolist() if hasattr(query_embedding, "tolist") else list(query_embedding)
         results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k
+            query_embeddings=[query_list],
+            n_results=min(top_k, len(self.documents))
         )
 
         output = []
@@ -239,11 +247,27 @@ class ChromaVectorStore(VectorStore):
         """
         تحميل - Load data
 
+        العربية:
+            إعادة فتح المجموعة المحفوظة واستعادة قائمة المستندات حتى يعمل البحث مباشرة.
+
+        English:
+            Reopen the persisted collection and restore the documents list
+            so that search works immediately after loading.
+
         Args:
             path: str - مسار التحميل
         """
         self.persist_directory = path
         self.client = self.chromadb.PersistentClient(path=path)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+
+        payload = self.collection.get(include=["documents", "embeddings"])
+        self.documents = payload.get("documents") or []
+        embeddings = payload.get("embeddings")
+        self.embeddings = list(embeddings) if embeddings is not None else []
 
 
 class FAISSVectorStore(VectorStore):
@@ -404,9 +428,8 @@ class ArabicRetriever:
             try:
                 self.vector_store = ChromaVectorStore(self.config.vector_store_path)
                 self.vector_store_type = "chroma"
-            except ImportError:
-                self.vector_store = MemoryVectorStore()
-                self.vector_store_type = "memory"
+            except ImportError as error:
+                self._fall_back_to_memory("chroma", error)
         elif requested_store == "faiss":
             dimension = 384  # الحجم الافتراضي
             if self.embeddings:
@@ -414,29 +437,57 @@ class ArabicRetriever:
             try:
                 self.vector_store = FAISSVectorStore(dimension=dimension)
                 self.vector_store_type = "faiss"
-            except ImportError:
-                self.vector_store = MemoryVectorStore()
-                self.vector_store_type = "memory"
+            except ImportError as error:
+                self._fall_back_to_memory("faiss", error)
         else:
             raise ValueError(f"Unknown vector store type: {self.config.vector_store_type}")
 
-    def add_documents(self, documents: List[str]) -> None:
+    def _fall_back_to_memory(self, requested_store: str, error: Exception) -> None:
+        """
+        التراجع إلى متجر الذاكرة - Fall back to the in-memory store
+
+        العربية:
+            استخدام متجر الذاكرة مع تحذير يوضح السبب.
+
+        English:
+            Use the in-memory store and warn about why.
+        """
+        warnings.warn(
+            f"Requested vector store '{requested_store}' is unavailable ({error}). "
+            "Falling back to the in-memory store.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        self.vector_store = MemoryVectorStore()
+        self.vector_store_type = "memory"
+
+    def add_documents(self, documents: List[str],
+                      embedding_texts: Optional[List[str]] = None) -> None:
         """
         إضافة مستندات - Add documents to the retriever
 
         العربية:
-            إضافة مستندات إلى قاعدة البيانات المتجهة
+            إضافة مستندات إلى قاعدة البيانات المتجهة. يمكن تمرير نسخ مطبّعة
+            من النصوص لاستخدامها في التضمين مع الاحتفاظ بالنص الأصلي للعرض.
 
         English:
-            Add documents to the vector database.
+            Add documents to the vector database. Optionally pass normalized
+            variants used only for embedding, while the original text is what
+            gets stored and returned by search.
 
         Args:
-            documents: List[str] - قائمة المستندات
+            documents: List[str] - قائمة المستندات (كما ستُعرض)
+            embedding_texts: Optional[List[str]] - نصوص التضمين المطبّعة
+                (نفس الطول؛ يستخدم documents إن لم تُحدد)
         """
         if not self.embeddings:
             raise ValueError("Embeddings model is required to add documents")
 
-        embeddings = self.embeddings.embed_batch(documents, show_progress_bar=True)
+        if embedding_texts is not None and len(embedding_texts) != len(documents):
+            raise ValueError("embedding_texts must match documents in length")
+
+        texts_to_embed = embedding_texts if embedding_texts is not None else documents
+        embeddings = self.embeddings.embed_batch(texts_to_embed, show_progress_bar=True)
         self.vector_store.add_documents(documents, embeddings)
 
     def retrieve(self, query: str, top_k: Optional[int] = None) -> List[Tuple[str, float]]:

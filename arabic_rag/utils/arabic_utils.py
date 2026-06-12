@@ -255,8 +255,8 @@ def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
 
     Example:
         ```python
-        result = truncate_text("نص طويل جداً", 5)
-        assert result == "نص طويل..."
+        result = truncate_text("نص طويل جداً", 8)
+        assert result == "نص طو..."
         ```
     """
     if len(text) <= max_length:

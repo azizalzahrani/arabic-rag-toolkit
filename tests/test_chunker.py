@@ -1,5 +1,5 @@
 """
-اختبارات معقم النصوص العربية - Arabic Chunker Tests
+اختبارات مُقطِّع النصوص العربية - Arabic Chunker Tests
 
 العربية:
     مجموعة اختبارات لوحدة تقطيع النصوص العربية
@@ -13,11 +13,11 @@ from arabic_rag.chunker import ArabicTextChunker, ChunkingConfig
 
 
 class TestArabicTextChunker:
-    """اختبارات معقم النصوص العربية"""
+    """اختبارات مُقطِّع النصوص العربية"""
 
     @pytest.fixture
     def chunker(self):
-        """إنشاء معقم نصوص للاختبار"""
+        """إنشاء مُقطِّع نصوص للاختبار"""
         return ArabicTextChunker()
 
     def test_chunk_small_text(self, chunker):
@@ -67,15 +67,46 @@ class TestArabicTextChunker:
         assert stats["max_chunk_size"] > 0
 
     def test_overlap_application(self, chunker):
-        """اختبار تطبيق التداخل"""
+        """اختبار تطبيق التداخل: كل جزء يبدأ بنهاية الجزء السابق"""
         config = ChunkingConfig(chunk_size=100, chunk_overlap=20)
         chunker = ArabicTextChunker(config)
         text = "النص الطويل " * 50
         chunks = chunker.chunk(text)
-        # تحقق من التداخل بين الأجزاء
-        if len(chunks) > 1:
-            # يجب أن يكون هناك تداخل بين الأجزاء المتتالية
-            assert chunks[1][:20] == chunks[0][-20:] or True  # قد لا يكون التداخل دقيقاً
+
+        assert len(chunks) > 1
+        for previous, current in zip(chunks, chunks[1:]):
+            leading_words = current.split()[:2]
+            tail = previous[-60:]
+            # كلمات بداية الجزء الحالي موجودة في نهاية الجزء السابق
+            assert all(word in tail for word in leading_words)
+
+    def test_overlap_respects_word_boundaries(self):
+        """التداخل لا يقطع الكلمات في منتصفها"""
+        config = ChunkingConfig(chunk_size=60, chunk_overlap=15)
+        chunker = ArabicTextChunker(config)
+        text = "كلمات عربية متنوعة للتجربة والاختبار " * 10
+        chunks = chunker.chunk(text)
+
+        vocabulary = set(text.split())
+        for chunk in chunks[1:]:
+            first_word = chunk.split()[0]
+            assert first_word in vocabulary, f"كلمة مقطوعة: {first_word}"
+
+    def test_constructor_keyword_shortcuts(self):
+        """اختصارات البناء الموثقة تعمل"""
+        chunker = ArabicTextChunker(chunk_size=150, chunk_overlap=30)
+        assert chunker.config.chunk_size == 150
+        assert chunker.config.chunk_overlap == 30
+
+    def test_constructor_rejects_config_and_kwargs(self):
+        """تمرير تكوين واختصارات معاً يرفع خطأ"""
+        with pytest.raises(TypeError):
+            ArabicTextChunker(ChunkingConfig(), chunk_size=100)
+
+    def test_pipe_character_is_not_a_delimiter(self, chunker):
+        """حرف '|' ليس فاصل جمل (إصلاح بناء النمط السابق)"""
+        sentences = chunker._split_sentences("هذا نص | يحتوي على خط عمودي")
+        assert len(sentences) == 1
 
     def test_empty_text(self, chunker):
         """اختبار معالجة نص فارغ"""

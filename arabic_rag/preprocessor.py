@@ -69,8 +69,11 @@ class ArabicTextPreprocessor:
         'ِ': '',    # Kasra
         'ٍ': '',    # Kasratan
         'ْ': '',    # Sukun
-        'َّ': '',   # Shadda with Fatha
         'ّ': '',    # Shadda
+        'ٰ': '',    # Superscript (dagger) Alef
+        'ٓ': '',    # Maddah above (combining)
+        'ٔ': '',    # Hamza above (combining)
+        'ٕ': '',    # Hamza below (combining)
         'ـ': '',    # Tatweel
     }
 
@@ -79,12 +82,15 @@ class ArabicTextPreprocessor:
         'أ': 'ا',   # Alef with Hamza above
         'إ': 'ا',   # Alef with Hamza below
         'آ': 'ا',   # Alef with Madda
+        'ٱ': 'ا',   # Alef Wasla
     }
 
     # Yaa normalization
+    # ملاحظة: لا نلمس "ؤ" أو "ئ" لأن توحيدهما غير قياسي ويشوه العرض
+    # Note: waw/yeh hamza carriers are intentionally left untouched;
+    # normalizing them is nonstandard and degrades display quality.
     YAA_VARIANTS = {
         'ى': 'ي',   # Alef Maksura
-        'ؤ': 'ء',   # Waw with Hamza
     }
 
     # Ha normalization

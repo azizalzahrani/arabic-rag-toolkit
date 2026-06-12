@@ -10,9 +10,10 @@ English:
     Supports multiple models including CAMeL, AraBART, and multilingual models.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 import hashlib
+import warnings
 import numpy as np
 
 
@@ -78,6 +79,8 @@ class ArabicEmbeddings:
         English:
             Load the required embedding model.
         """
+        self._dimension: Optional[int] = None
+
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -85,8 +88,19 @@ class ArabicEmbeddings:
             self.backend = "hashing"
             return
 
-        self.model = SentenceTransformer(self.config.model_name, device=self.config.device)
-        self.backend = "sentence-transformers"
+        try:
+            self.model = SentenceTransformer(self.config.model_name, device=self.config.device)
+            self.backend = "sentence-transformers"
+        except Exception as error:  # network failures, missing model files, etc.
+            warnings.warn(
+                f"Could not load sentence-transformers model "
+                f"'{self.config.model_name}' ({error}). "
+                "Falling back to the local hashing backend.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self.model = None
+            self.backend = "hashing"
 
     def embed_text(self, text: str) -> np.ndarray:
         """
@@ -198,9 +212,13 @@ class ArabicEmbeddings:
         vec1 = self.embed_text(text1)
         vec2 = self.embed_text(text2)
 
-        return float(np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2)))
+        denominator = np.linalg.norm(vec1) * np.linalg.norm(vec2)
+        if denominator == 0:
+            return 0.0
 
-    def most_similar(self, query: str, texts: List[str], top_k: int = 5) -> List[tuple]:
+        return float(np.dot(vec1, vec2) / denominator)
+
+    def most_similar(self, query: str, texts: List[str], top_k: int = 5) -> List[Tuple[float, str]]:
         """
         إيجاد أكثر النصوص تشابهاً - Find most similar texts
 
@@ -231,17 +249,22 @@ class ArabicEmbeddings:
         if not texts:
             raise ValueError("Texts list cannot be empty")
 
+        # نحافظ على نفس التصفية المستخدمة في embed_batch حتى تبقى الفهارس متطابقة
+        # Keep the same filtering used by embed_batch so indices stay aligned.
+        valid_texts = [t for t in texts if t and t.strip()]
+        if not valid_texts:
+            raise ValueError("All texts are empty or whitespace")
+
         query_embedding = self.embed_text(query)
-        text_embeddings = self.embed_batch(texts)
+        text_embeddings = self.embed_batch(valid_texts)
+        query_norm = np.linalg.norm(query_embedding)
 
         # حساب درجات التشابه
         scores = []
         for i, text_embedding in enumerate(text_embeddings):
-            score = float(
-                np.dot(query_embedding, text_embedding) /
-                (np.linalg.norm(query_embedding) * np.linalg.norm(text_embedding))
-            )
-            scores.append((score, texts[i]))
+            denominator = query_norm * np.linalg.norm(text_embedding)
+            score = float(np.dot(query_embedding, text_embedding) / denominator) if denominator else 0.0
+            scores.append((score, valid_texts[i]))
 
         # ترتيب تنازلي
         scores.sort(reverse=True, key=lambda x: x[0])
@@ -267,9 +290,16 @@ class ArabicEmbeddings:
             print(dim)  # 384
             ```
         """
-        # نموذج تجريبي بسيط
-        test_embedding = self.embed_text("test")
-        return len(test_embedding)
+        if self._dimension is not None:
+            return self._dimension
+
+        if self.backend == "sentence-transformers":
+            model_dimension = self.model.get_sentence_embedding_dimension()
+            self._dimension = model_dimension or len(self.embed_text("اختبار"))
+        else:
+            self._dimension = self.config.fallback_dimension
+
+        return self._dimension
 
     def _normalize_vector(self, vector: np.ndarray) -> np.ndarray:
         """

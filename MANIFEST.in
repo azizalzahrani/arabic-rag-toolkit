@@ -1,5 +1,7 @@
 include LICENSE
 include README.md
+include CHANGELOG.md
 include pyproject.toml
 include requirements.txt
 include .env.example
+include arabic_rag/py.typed

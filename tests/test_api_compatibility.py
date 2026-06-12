@@ -75,3 +75,67 @@ def test_package_version_matches_pyproject():
 
     assert match is not None
     assert match.group(1) == __version__
+
+
+def test_pipeline_from_env_reads_documented_variables(monkeypatch):
+    """تُقرأ متغيرات البيئة الموثقة في ‎.env.example‎ فعلياً."""
+    monkeypatch.setenv("VECTOR_STORE", "memory")
+    monkeypatch.setenv("LLM_PROVIDER", "local")
+    monkeypatch.setenv("CHUNK_SIZE", "256")
+    monkeypatch.setenv("CHUNK_OVERLAP", "32")
+    monkeypatch.setenv("TOP_K", "7")
+    monkeypatch.setenv("TEMPERATURE", "0.5")
+    monkeypatch.setenv("MAX_TOKENS", "512")
+
+    pipeline = ArabicRAGPipeline.from_env()
+
+    assert pipeline.config.retrieval_config.vector_store_type == "memory"
+    assert pipeline.config.generation_config.llm_provider == "local"
+    assert pipeline.config.chunking_config.chunk_size == 256
+    assert pipeline.config.chunking_config.chunk_overlap == 32
+    assert pipeline.config.retrieval_config.top_k == 7
+    assert pipeline.config.generation_config.temperature == 0.5
+    assert pipeline.config.generation_config.max_tokens == 512
+
+
+def test_reset_keeps_loaded_embedding_model():
+    """إعادة التعيين تمسح المستندات دون إعادة تحميل نموذج التضمين."""
+    pipeline = ArabicRAGPipeline()
+    embeddings_before = pipeline.embeddings
+
+    pipeline.add_documents(["مستند تجريبي للفهرسة والاختبار."])
+    assert pipeline.documents
+
+    pipeline.reset()
+
+    assert pipeline.embeddings is embeddings_before
+    assert pipeline.documents == []
+    assert pipeline.retrieve("مستند") == []
+
+
+def test_query_sources_include_document_snippets():
+    """قسم المصادر يتضمن مقتطفات من المستندات لا الدرجات فقط."""
+    pipeline = ArabicRAGPipeline(vector_store="memory", llm_provider="local")
+    pipeline.add_documents(["مجلس الإدارة مسؤول عن إدارة الشركة وتمثيلها أمام الغير."])
+
+    answer = pipeline.query("من المسؤول عن إدارة الشركة؟", return_sources=True)
+
+    sources_section = answer.split("المصادر:")[-1]
+    assert "المصادر" in answer
+    assert "[1]" in sources_section
+    # المقتطف يتضمن نص المستند وليس الدرجة فقط
+    assert "مجلس" in sources_section
+
+
+def test_retrieved_documents_keep_original_orthography():
+    """النص المعروض يحتفظ بالهمزات والرسم الأصلي بينما يتم البحث مطبّعاً."""
+    pipeline = ArabicRAGPipeline(vector_store="memory", llm_provider="local")
+    original = "مجلس الإدارة مسؤول عن إدارة الشركة وتمثيلها أمام الغير."
+    pipeline.add_documents([original])
+
+    results = pipeline.retrieve("من المسءول عن اداره الشركه؟")
+
+    assert results
+    top_document = results[0][0]
+    assert "مسؤول" in top_document  # لم تتحول إلى "مسءول"
+    assert "الإدارة" in top_document  # لم تتحول إلى "الاداره"
