@@ -1,0 +1,90 @@
+# AZION OS · report this repository's build state to the dashboard.
+#
+# Why this exists: nothing outside GitHub can reliably reach in. Scheduled
+# Cowork runs get a 403 on every GitHub path, the Drive connector never
+# appeared in one, and there is no bridge to the Mac. A workflow running here,
+# on GitHub's own machines, pushing outward over HTTPS, has none of those
+# failure modes.
+#
+# It reports. It never changes anything in this repository.
+name: AZION OS report
+
+on:
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+  schedule:
+    - cron: "10 2 * * *"      # 05:10 Riyadh, a daily heartbeat even if nothing ran
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send the result to AZION OS
+        env:
+          AZION_CI_TOKEN: ${{ secrets.AZION_CI_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AZION_CI_TOKEN:-}" ]; then
+            echo "AZION_CI_TOKEN is not set on this repository. Nothing to do."
+            exit 0
+          fi
+
+          WF='${{ github.event.workflow_run.name }}'
+          CONC='${{ github.event.workflow_run.conclusion }}'
+          BRANCH='${{ github.event.workflow_run.head_branch }}'
+          SHA='${{ github.event.workflow_run.head_sha }}'
+          URL='${{ github.event.workflow_run.html_url }}'
+          RUN_ID='${{ github.event.workflow_run.id }}'
+
+          # On a scheduled or manual run there is no workflow_run payload, so
+          # look up the latest completed run on the default branch instead.
+          if [ -z "$CONC" ]; then
+            LATEST=$(gh api "repos/${{ github.repository }}/actions/runs?branch=${{ github.event.repository.default_branch }}&status=completed&per_page=1" 2>/dev/null || echo '{}')
+            WF=$(echo "$LATEST"     | jq -r '.workflow_runs[0].name // "no workflow has run"')
+            CONC=$(echo "$LATEST"   | jq -r '.workflow_runs[0].conclusion // "none"')
+            BRANCH=$(echo "$LATEST" | jq -r '.workflow_runs[0].head_branch // ""')
+            SHA=$(echo "$LATEST"    | jq -r '.workflow_runs[0].head_sha // ""')
+            URL=$(echo "$LATEST"    | jq -r '.workflow_runs[0].html_url // ""')
+            RUN_ID=$(echo "$LATEST" | jq -r '.workflow_runs[0].id // ""')
+          fi
+
+          # Never report on ourselves: it would be a finding about the thing
+          # that writes findings.
+          if [ "$WF" = "AZION OS report" ]; then
+            echo "Skipping self-report."
+            exit 0
+          fi
+
+          JOBS='[]'
+          if [ "$CONC" = "failure" ] && [ -n "$RUN_ID" ]; then
+            JOBS=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/jobs" \
+              | jq -c '[.jobs[] | select(.conclusion=="failure") | {
+                  name: .name,
+                  conclusion: .conclusion,
+                  steps: [.steps[]? | select(.conclusion=="failure") | .name]
+                }]' 2>/dev/null || echo '[]')
+          fi
+
+          PAYLOAD=$(jq -nc \
+            --arg repo "${{ github.repository }}" --arg wf "$WF" --arg conc "$CONC" \
+            --arg branch "$BRANCH" --arg sha "$SHA" --arg url "$URL" --argjson jobs "$JOBS" \
+            '{repo:$repo, workflow:$wf, conclusion:$conc, branch:$branch, sha:$sha, url:$url, jobs:$jobs}')
+
+          echo "$PAYLOAD" | jq '{repo, workflow, conclusion, branch}'
+
+          CODE=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $AZION_CI_TOKEN" \
+            -H 'content-type: application/json' \
+            -d "$PAYLOAD" \
+            https://azion-os.vercel.app/api/ci)
+          echo "AZION OS replied $CODE"
+          cat /tmp/resp.json
+          # A dashboard that cannot be reached must never fail a build.
+          [ "$CODE" = "200" ] || echo "Reporting failed, continuing anyway."

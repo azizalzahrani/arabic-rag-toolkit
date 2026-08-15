@@ -1,0 +1,37 @@
+# AZION OS · merge the safe half of the dependency backlog.
+#
+# On 15 August 2026, 16 of 21 open pull requests were bots, and baseer's eight
+# were all older than ninety days, which is why its four critical alerts could
+# not land: the update path itself was blocked.
+#
+# Patch and minor merge themselves once CI is green. Major versions never do.
+name: Dependabot auto-merge
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dependabot/fetch-metadata@v2
+        id: meta
+        with: { alert-lookup: true, github-token: "${{ secrets.GITHUB_TOKEN }}" }
+
+      - name: Merge patch and minor once checks pass
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR"
+
+      - name: Leave majors alone, and say so
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: gh pr comment "$PR" --body "Major version bump, so this one waits for Aziz. AZION OS auto-merges patch and minor only."
