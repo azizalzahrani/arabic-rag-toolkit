@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -56,7 +56,7 @@ jobs:
 
     steps:
       # gh needs a git repository to infer the target repo and verify the tag
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download distributions
         uses: actions/download-artifact@v4
