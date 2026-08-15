@@ -1,10 +1,16 @@
 # AZION OS · keep dependencies visible.
 #
-# Twelve of fourteen active repositories had alerts switched off on 15 August
-# 2026, which meant "0 alerts" read as clean when it actually meant unwatched.
+# Corrected on 16 August 2026. The first version of this file declared an npm
+# project at the repository root in every repository it was installed into.
+# In this one there is no package.json at the root, so every Dependabot run
+# failed with "/package.json not found" and the default branch read red for a
+# reason that had nothing to do with the code.
+#
+# A red branch that means nothing is worse than no signal at all, because it
+# trains you to ignore the colour.
 version: 2
 updates:
-  - package-ecosystem: "npm"
+  - package-ecosystem: "pip"
     directory: "/"
     schedule: { interval: "weekly", day: "sunday", time: "04:00", timezone: "Asia/Riyadh" }
     open-pull-requests-limit: 10
