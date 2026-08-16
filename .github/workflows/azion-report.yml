@@ -9,12 +9,19 @@
 # It reports. It never changes anything in this repository.
 name: AZION OS report
 
+# Once a day, and on demand. Nothing else.
+#
+# The first version of this triggered on workflow_run for workflows: ["*"], so
+# every completed run in the repository spawned a report run. On 16 August that
+# turned roughly a thousand Dependabot and CI runs into roughly two thousand,
+# each billed as a full minute, and the monthly Actions allowance was gone in a
+# day. A monitor must never cost more than the thing it monitors.
+#
+# The dashboard has a "Report now" button per repository for when the daily
+# heartbeat is not soon enough.
 on:
-  workflow_run:
-    workflows: ["*"]
-    types: [completed]
   schedule:
-    - cron: "10 2 * * *"      # 05:10 Riyadh, a daily heartbeat even if nothing ran
+    - cron: "10 2 * * *"      # 05:10 Riyadh
   workflow_dispatch:
 
 permissions:
